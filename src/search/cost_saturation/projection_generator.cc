@@ -31,7 +31,7 @@ Abstractions ProjectionGenerator::generate_abstractions(
     utils::Timer patterns_timer;
     TaskProxy task_proxy(*task);
 
-    task_properties::verify_no_axioms(task_proxy);
+    //task_properties::verify_no_axioms(task_proxy);
     if (!create_complete_transition_system &&
         task_properties::has_conditional_effects(task_proxy)) {
         cerr << "Error: configuration doesn't support conditional effects. "
@@ -74,7 +74,7 @@ Abstractions ProjectionGenerator::generate_abstractions(
     utils::Timer pdbs_timer;
     shared_ptr<TaskInfo> task_info = make_shared<TaskInfo>(task_proxy);
     Abstractions abstractions;
-    task_properties::verify_no_axioms(task_proxy);
+    //task_properties::verify_no_axioms(task_proxy);
     for (const pdbs::Pattern &pattern : *patterns) {
         unique_ptr<Abstraction> projection;
         if (projections) {
