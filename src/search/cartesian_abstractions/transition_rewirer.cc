@@ -238,7 +238,11 @@ void TransitionRewirer::rewire_outgoing_transitions(
         } else{
             // op can only start in v2.
             if (!derived_conflict_v2){
+<<<<<<< HEAD
                 //cout << "Adding transition from " << v2_id << " to " << w_id << " via op " << task.get_operators()[op_id].get_name() << endl;
+=======
+                // cout << "Adding transition from " << v2_id << " to " << w_id << " via op " << task.get_operators()[op_id].get_name() << endl;
+>>>>>>> 759d741115b686eb509ab71418621cbf4cff6163
                 add_transition(incoming, outgoing, v2_id, op_id, w_id);
             }
         }
@@ -246,6 +250,252 @@ void TransitionRewirer::rewire_outgoing_transitions(
     }
 }
 
+<<<<<<< HEAD
+=======
+int TransitionRewirer::get_derived_value(const AbstractState &v, int op_id, int var) const {
+    AxiomsProxy axioms = task.get_axioms();
+
+    // Count number of unsatisfied body atoms for each axiom
+    vector<int> unsat_body_atoms(axioms.size());
+    // Count number of axioms possibly supporting each derived variable
+    vector<int> supporting_axioms(task.get_variables().size()); // TODO: num derived variables
+    // dont consider axioms again that we know can not fire
+    std::unordered_set<int> unsat_axioms;
+
+    for (OperatorProxy axiom : axioms){
+        unsat_body_atoms[axiom.get_id()] = axiom.get_preconditions().size();
+        supporting_axioms[axiom.get_effects()[0].get_fact().get_var_id()]++;
+    }
+
+    // Initialize queue with facts known to be true/false
+    std::deque<std::pair<FactPair, bool>> fact_queue;
+
+    // Add fact pairs for basic variables definitiely true/false in v oplus o to the queue
+    for (VariableProxy var_prox : task.get_variables()){
+
+        // only iterate over basic variables
+        if (var_prox.is_derived()){
+            break;
+        }
+        int i = var_prox.get_id();
+        int post_val = get_postcondition_value(op_id, i);
+        // value of i is determined by o
+        if (post_val != UNDEFINED){
+            // post condition fact must be true
+            fact_queue.emplace_front(FactPair(i, post_val), true);
+            // all other values for i must be false
+            for(int val = 0; val < var_prox.get_domain_size(); val++){
+                if (val == post_val){
+                    continue;
+                }
+                fact_queue.emplace_back(FactPair(i, val), false);
+            }
+
+        // abstract state has single value for i which is not modified by o
+        } else if (v.count(i) == 1){
+            // single value fact must be true
+            int single_val = v.get_cartesian_set().get_values(i)[0];
+            fact_queue.emplace_front(FactPair(i, single_val), true);
+            // all other values for i must be false
+            for(int val = 0; val < var_prox.get_domain_size(); val++){
+                if (val == single_val){
+                    continue;
+                }
+                fact_queue.emplace_front(FactPair(i, val), false);
+            }
+        // abstract state v has non-full domain for i
+        } else if (v.count(i) != var_prox.get_domain_size()){
+            // all values not in v must be false
+            for(int val = 0; val < var_prox.get_domain_size(); val++){
+                if (v.contains(i, val)){
+                    continue;
+                }
+                fact_queue.emplace_front(FactPair(i, val), false);
+            }
+        }
+    }
+    
+    // variables already seen (added to queue)
+    vector<bool> seen_vars(task.get_variables().size(), false); // TODO: num derived variables
+   
+    while (!fact_queue.empty()) {
+        FactPair fact = fact_queue.front().first;
+        bool flag = fact_queue.front().second;
+        fact_queue.pop_front();
+        if(flag){
+            for (OperatorProxy r : axioms){
+                if (unsat_axioms.contains(r.get_id())){
+                    continue;
+                }
+                for (FactProxy f : r.get_preconditions()){
+                    if (f.get_pair() == fact){
+                        unsat_body_atoms[r.get_id()]--;
+                        if (unsat_body_atoms[r.get_id()] == 0) {
+                            FactProxy head_atom = r.get_effects()[0].get_fact();
+                            if (head_atom.get_var_id() == var) {
+                                return head_atom.get_value(); // derived variable is true
+                            } 
+                            enqueue(fact_queue, seen_vars, head_atom.get_pair(), true);
+                        }
+                        break; // assuming each fact only occurs once in an operator precondition
+                    }
+                }
+            }
+        } else {
+            for (OperatorProxy r : axioms){
+                if (unsat_axioms.contains(r.get_id())){
+                    continue;
+                }
+                for (FactProxy f : r.get_preconditions()){
+                    if (f.get_pair() == fact){
+                        FactProxy head_atom = r.get_effects()[0].get_fact();
+                        int head_id = head_atom.get_var_id();
+                        supporting_axioms[head_id]--;
+                        unsat_axioms.insert(r.get_id());
+                        if (supporting_axioms[head_id] == 0) {
+                            if (head_id == var) {
+                                return 0; // derived variable is false
+                            } 
+                            enqueue(fact_queue, seen_vars, head_atom.get_pair(), false);
+                        }
+                        break; // assuming each fact only occurs once in an operator precondition
+                    }
+                }
+            }
+        }
+    }
+    return UNDEFINED; 
+}
+
+// Check if there is a conflict for derived variable values
+// between state v updated with o compared to target state w.
+bool TransitionRewirer::check_derived_conflict(const AbstractState &v, int op_id, const AbstractState &w) const {
+    AxiomsProxy axioms = task.get_axioms();
+
+    // Count number of unsatisfied body atoms for each axiom
+    vector<int> unsat_body_atoms(axioms.size());
+    // Count number of axioms possibly supporting each derived variable
+    vector<int> supporting_axioms(task.get_variables().size()); // TODO: num derived variables
+    // dont consider axioms again that we know can not fire
+    std::unordered_set<int> unsat_axioms;
+
+    for (OperatorProxy axiom : axioms){
+        unsat_body_atoms[axiom.get_id()] = axiom.get_preconditions().size();
+        supporting_axioms[axiom.get_effects()[0].get_fact().get_var_id()]++;
+    }
+
+    // Initialize queue with facts known to be true/false
+    std::deque<std::pair<FactPair, bool>> fact_queue;
+
+    // Add fact pairs for basic variables definitiely true/false in v oplus o to the queue
+    for (VariableProxy var_prox : task.get_variables()){
+
+        // only iterate over basic variables
+        if (var_prox.is_derived()){
+            break;
+        }
+        int i = var_prox.get_id();
+        int post_val = get_postcondition_value(op_id, i);
+        // value of i is determined by o
+        if (post_val != UNDEFINED){
+            // post condition fact must be true
+            fact_queue.emplace_front(FactPair(i, post_val), true);
+            // all other values for i must be false
+            for(int val = 0; val < var_prox.get_domain_size(); val++){
+                if (val == post_val){
+                    continue;
+                }
+                fact_queue.emplace_back(FactPair(i, val), false);
+            }
+
+        // abstract state has single value for i which is not modified by o
+        } else if (v.count(i) == 1){
+            // single value fact must be true
+            int single_val = v.get_cartesian_set().get_values(i)[0];
+            fact_queue.emplace_front(FactPair(i, single_val), true);
+            // all other values for i must be false
+            for(int val = 0; val < var_prox.get_domain_size(); val++){
+                if (val == single_val){
+                    continue;
+                }
+                fact_queue.emplace_front(FactPair(i, val), false);
+            }
+        // abstract state v has non-full domain for i
+        } else if (v.count(i) != var_prox.get_domain_size()){
+            // all values not in v must be false
+            for(int val = 0; val < var_prox.get_domain_size(); val++){
+                if (v.contains(i, val)){
+                    continue;
+                }
+                fact_queue.emplace_front(FactPair(i, val), false);
+            }
+        }
+    }
+    
+    // variables already seen (added to queue)
+    vector<bool> seen_vars(task.get_variables().size(), false); // TODO: num derived variables
+   
+
+    while (!fact_queue.empty()) {
+        FactPair fact = fact_queue.front().first;
+        bool flag = fact_queue.front().second;
+        fact_queue.pop_front();
+        if(flag){
+            for (OperatorProxy r : axioms){
+                if (unsat_axioms.contains(r.get_id())){
+                    continue;
+                }
+                for (FactProxy f : r.get_preconditions()){
+                    if (f.get_pair() == fact){
+                        unsat_body_atoms[r.get_id()]--;
+                        if (unsat_body_atoms[r.get_id()] == 0) {
+                            FactProxy head_atom = r.get_effects()[0].get_fact();
+                            if (!w.contains(head_atom.get_var_id(), true)){
+                                //cout << "Conflict found for derived variable " << head_atom.get_var_id() << " expected true in target state" << endl;
+                                return true; // conflict found
+                            } 
+                            enqueue(fact_queue, seen_vars, head_atom.get_pair(), true);
+                        }
+                        break; // assuming each fact only occurs once in an operator precondition
+                    }
+                }
+            }
+        } else {
+            for (OperatorProxy r : axioms){
+                if (unsat_axioms.contains(r.get_id())){
+                    continue;
+                }
+                for (FactProxy f : r.get_preconditions()){
+                    if (f.get_pair() == fact){
+                        FactProxy head_atom = r.get_effects()[0].get_fact();
+                        int head_id = head_atom.get_var_id();
+                        supporting_axioms[head_id]--;
+                        unsat_axioms.insert(r.get_id());
+                        if (supporting_axioms[head_id] == 0) {
+                            if (!w.contains(head_id, false)) {
+                                //cout << "Conflict found for derived variable " << head_id << " expected false in target state" << endl;
+                                return true; // conflict found
+                            } 
+                            enqueue(fact_queue, seen_vars, head_atom.get_pair(), false);
+                        }
+                        break; // assuming each fact only occurs once in an operator precondition
+                    }
+                }
+            }
+        }
+    }
+    return false; 
+}
+
+// Add item to queue if not already seen
+void TransitionRewirer::enqueue(std::deque<std::pair<FactPair, bool>> &q, std::vector<bool> &seen_vars, FactPair fact, bool x) const {
+    if (!seen_vars[fact.var]){
+        seen_vars[fact.var] = true;
+        q.emplace_back(fact, x);
+    }
+}
+
+>>>>>>> 759d741115b686eb509ab71418621cbf4cff6163
 void TransitionRewirer::rewire_loops(
     deque<Loops> &loops, deque<Transitions> &incoming,
     deque<Transitions> &outgoing, int v_id, const AbstractState &v1,
